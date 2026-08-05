@@ -15,10 +15,31 @@ import type { MetadataRoute } from "next";
  */
 
 /**
- * Paths that are never content. `/api/` is machinery, and the two Next
- * internals are files a crawler gains nothing from and spends budget on.
+ * Paths that are never content.
+ *
+ * `/_next/image` is the optimizer: every picture on the site is also reachable
+ * there, under a URL carrying the source as a query parameter. Indexed, those
+ * become duplicates of the real images that lead nowhere a person would want to
+ * land.
  */
-export const DEFAULT_DISALLOW = ["/api/", "/_next/", "/_vercel/"];
+export const DEFAULT_DISALLOW = ["/api/", "/_next/image", "/_vercel/"];
+
+/**
+ * Deliberately allowed.
+ *
+ * `/_next/static` holds the CSS and JS. A crawler that cannot fetch those
+ * renders the site as a wall of unstyled text and judges it accordingly - which
+ * is what a blanket `/_next/` block does.
+ */
+export const DEFAULT_ALLOW = ["/", "/_next/static/"];
+
+/**
+ * Image crawlers need the optimizer. Content imagery is served through it -
+ * that is what makes a 160px thumbnail cost 160px worth of bytes - so blocking
+ * the path for these would hide every picture on the site from image search
+ * rather than merely hiding duplicates.
+ */
+export const IMAGE_CRAWLERS = ["Googlebot-Image", "Bingbot-Image"];
 
 /**
  * The crawlers that read for a model rather than for a search index. Named
@@ -36,10 +57,17 @@ export const AI_CRAWLERS = [
   "Perplexity-User",
   "Google-Extended",
   "Applebot-Extended",
-  "CCBot",
   "meta-externalagent",
-  "Bytespider",
 ];
+
+/**
+ * Crawlers that read for a training set and cite nobody.
+ *
+ * Separated from the ones above because the trade is different: an AI search
+ * crawler sends people back, and Google-Extended is what feeds AI Overviews, so
+ * blocking those costs visibility. These offer nothing in return.
+ */
+export const AI_SCRAPERS = ["Bytespider", "CCBot", "AI2Bot"];
 
 export type RobotsOptions = {
   siteUrl: string;
@@ -49,6 +77,10 @@ export type RobotsOptions = {
   sitemaps?: string[];
   /** False writes a named block for every crawler in AI_CRAWLERS. */
   allowAi?: boolean;
+  /** False lets the training-only scrapers in. They are blocked by default. */
+  blockScrapers?: boolean;
+  /** Groups appended after the defaults, for anything a site needs to say. */
+  extraRules?: NonNullable<MetadataRoute.Robots["rules"]>;
   /**
    * A staging or preview origin has no business in an index, and the surest way
    * to keep it out is to say so here rather than to rely on nobody linking it.
@@ -66,6 +98,8 @@ export function robotsRules({
   disallow = [],
   sitemaps = [],
   allowAi = true,
+  blockScrapers = true,
+  extraRules = [],
   indexable = true,
 }: RobotsOptions): MetadataRoute.Robots {
   const base = origin(siteUrl);
@@ -78,10 +112,24 @@ export function robotsRules({
     };
   }
 
+  /*
+   * A named group replaces the wildcard rather than adding to it, so every
+   * group has to repeat what it needs. Leaving it out is how the optimizer was
+   * once left open to Googlebot alone.
+   */
   return {
     rules: [
-      { userAgent: "*", allow: "/", disallow: blocked },
-      ...(allowAi ? [] : [{ userAgent: AI_CRAWLERS, disallow: "/" }]),
+      { userAgent: "*", allow: DEFAULT_ALLOW, disallow: blocked },
+      {
+        userAgent: IMAGE_CRAWLERS,
+        allow: [...DEFAULT_ALLOW, "/_next/image"],
+        disallow: blocked.filter((path) => path !== "/_next/image"),
+      },
+      ...(allowAi
+        ? [{ userAgent: AI_CRAWLERS, allow: DEFAULT_ALLOW, disallow: blocked }]
+        : [{ userAgent: AI_CRAWLERS, disallow: "/" }]),
+      ...(blockScrapers ? [{ userAgent: AI_SCRAPERS, disallow: "/" }] : []),
+      ...extraRules,
     ],
     ...(base
       ? { sitemap: [`${base}/sitemap.xml`, ...sitemaps.map((path) => `${base}${path}`)], host: base }
@@ -94,7 +142,10 @@ export function robotsTxt(options: RobotsOptions): string {
   const rules = robotsRules(options);
   const lines: string[] = [];
 
-  for (const rule of Array.isArray(rules.rules) ? rules.rules : [rules.rules]) {
+  // `rules` is one group or many, so it is normalised before it is walked.
+  const groups = (Array.isArray(rules.rules) ? rules.rules : [rules.rules]).filter(Boolean);
+
+  for (const rule of groups) {
     if (!rule) continue;
     const agents = Array.isArray(rule.userAgent) ? rule.userAgent : [rule.userAgent ?? "*"];
     for (const agent of agents) lines.push(`User-agent: ${agent}`);
