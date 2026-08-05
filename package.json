@@ -1,7 +1,7 @@
 {
   "name": "@tintorch/web",
-  "version": "1.0.1",
-  "description": "Shared pieces for TinTorch CMS sites: footer badges, ownership verifications and analytics loaders.",
+  "version": "1.1.0",
+  "description": "Shared pieces for TinTorch CMS sites: badges, verifications, analytics, sitemaps, robots.txt, llms.txt and RSS.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
@@ -15,7 +15,12 @@
     "./badge-link": "./src/badge-link.tsx",
     "./badge-row": "./src/badge-row.tsx",
     "./analytics": "./src/analytics.tsx",
-    "./verification": "./src/verification.ts"
+    "./verification": "./src/verification.ts",
+    "./sitemap": "./src/sitemap.ts",
+    "./sitemap-stylesheet": "./src/sitemap-stylesheet.ts",
+    "./robots": "./src/robots.ts",
+    "./llms": "./src/llms.ts",
+    "./feed": "./src/feed.ts"
   },
   "files": [
     "src"

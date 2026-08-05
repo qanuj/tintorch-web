@@ -26,3 +26,44 @@ export { BadgeRow } from "./badge-row";
 export { Analytics, AnalyticsNoScript, type SiteAnalytics } from "./analytics";
 
 export { verificationMetadata, type SiteVerification } from "./verification";
+
+/*
+ * The files every site owes a crawler. Server-side only - no React, no client
+ * boundary - so a route handler can call them directly.
+ */
+export {
+  SITEMAP_MAX_URLS,
+  parseSectionPath,
+  sectionPageCount,
+  sectionPath,
+  sitemapHandlers,
+  sitemapIndexXml,
+  sitemapPage,
+  sitemapResponse,
+  sitemapUrl,
+  urlSetXml,
+  xmlEscape,
+  type SitemapSection,
+  type SitemapSource,
+  type SitemapUrl,
+} from "./sitemap";
+
+export {
+  DEFAULT_SITEMAP_THEME,
+  sitemapStylesheetXsl,
+  stylesheetResponse,
+  type SitemapTheme,
+} from "./sitemap-stylesheet";
+
+export { AI_CRAWLERS, DEFAULT_DISALLOW, robotsRules, robotsTxt, type RobotsOptions } from "./robots";
+
+export { llmsResponse, llmsTxt, type LlmsLink, type LlmsSection } from "./llms";
+
+export {
+  feedResponse,
+  feedTags,
+  itemsForTag,
+  rssXml,
+  tagSlug,
+  type FeedItem,
+} from "./feed";
