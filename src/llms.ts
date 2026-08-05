@@ -21,7 +21,14 @@ export type LlmsLink = {
 
 export type LlmsSection = {
   title: string;
-  links: LlmsLink[];
+  links?: LlmsLink[];
+  /**
+   * Lines that are not links: a contact block, a note about how URLs are
+   * built. Emitted verbatim under the heading, after any links.
+   */
+  lines?: string[];
+  /** A line under the heading, before the list - "Index: /services". */
+  intro?: string;
 };
 
 function origin(siteUrl: string): string {
@@ -76,14 +83,18 @@ export function llmsTxt({
 
   for (const section of sections) {
     const links = (section.links ?? []).filter((link) => link?.path && link?.title);
-    if (!links.length) continue;
+    const extra = (section.lines ?? []).filter((line) => line?.trim());
+    if (!links.length && !extra.length) continue;
 
     lines.push("", `## ${section.title}`, "");
+    if (section.intro?.trim()) lines.push(oneLine(section.intro, 300), "");
+
     for (const link of links) {
       const url = absolute(siteUrl, link.path);
       const note = link.summary?.trim() ? `: ${oneLine(link.summary)}` : "";
       lines.push(`- [${oneLine(link.title, 120)}](${url})${note}`);
     }
+    lines.push(...extra);
   }
 
   return `${lines.join("\n")}\n`;
