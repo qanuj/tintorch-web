@@ -44,6 +44,7 @@ export {
   sitemapResponse,
   sitemapUrl,
   urlSetXml,
+  withStylesheet,
   xmlEscape,
   type SitemapSection,
   type SitemapSource,

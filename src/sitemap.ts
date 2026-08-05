@@ -204,6 +204,49 @@ export function sitemapPage<T>(urls: T[], page: number, pageSize = SITEMAP_MAX_U
   return urls.slice(start, start + pageSize);
 }
 
+/**
+ * Splice a stylesheet into a sitemap being streamed from somewhere else.
+ *
+ * A site large enough to proxy its sitemaps from the CMS cannot use
+ * `urlSetXml` - the industry file runs past 3 MB and buffering it to add two
+ * lines is what made it uncacheable in the first place. So the first chunk has
+ * its XML declaration swapped for declaration plus stylesheet, and every chunk
+ * after passes untouched.
+ *
+ * A processing instruction has to follow the declaration rather than precede
+ * it, which is why this cannot simply prepend.
+ *
+ * Without it the index renders as a page and its children - the files a person
+ * is far more likely to open - render as a raw tree with a browser warning
+ * about missing style information.
+ */
+export function withStylesheet(body: ReadableStream<Uint8Array>, href: string) {
+  let done = false;
+
+  const transform = new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      if (done) {
+        controller.enqueue(chunk);
+        return;
+      }
+      done = true;
+
+      const text = new TextDecoder().decode(chunk);
+      const declaration = text.match(/^<\?xml[^>]*\?>/);
+      const rest = declaration ? text.slice(declaration[0].length) : text;
+      const instruction = `<?xml-stylesheet type="text/xsl" href="${xmlEscape(href)}"?>`;
+
+      controller.enqueue(
+        new TextEncoder().encode(
+          `${declaration?.[0] ?? '<?xml version="1.0" encoding="UTF-8"?>'}\n${instruction}\n${rest.replace(/^\n/, "")}`,
+        ),
+      );
+    },
+  });
+
+  return body.pipeThrough(transform);
+}
+
 /** An XML response with the caching a sitemap wants. */
 export function sitemapResponse(xml: string, maxAge = 3600): Response {
   return new Response(xml, {
