@@ -76,7 +76,10 @@ export function llmsTxt({
 }): string {
   const lines: string[] = [`# ${name}`];
 
-  if (summary?.trim()) lines.push("", `> ${oneLine(summary)}`);
+  // 200 characters is right for a list item, where a dozen of them are read at
+  // once. The blockquote is read alone and is the one line that has to say what
+  // the business actually does, so it gets the room.
+  if (summary?.trim()) lines.push("", `> ${oneLine(summary, 500)}`);
   for (const note of notes ?? []) {
     if (note?.trim()) lines.push("", oneLine(note, 500));
   }
