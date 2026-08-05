@@ -12,15 +12,16 @@
  * they look.
  */
 
-export {
-  BADGE_FIELDS,
-  BadgeLink,
-  BadgeRow,
-  badgeAlt,
-  selectFooterBadges,
-  withRefurl,
-  type SiteBadge,
-} from "./badges";
+/*
+ * Split across three files rather than one, because the "use client" directive
+ * is per file: with the whole lot in one, `selectFooterBadges` - a pure
+ * function over CMS items - was marked as client code, and calling it from a
+ * server component failed the build. Only the component that needs the current
+ * path is a client component.
+ */
+export { BADGE_FIELDS, badgeAlt, selectFooterBadges, withRefurl, type SiteBadge } from "./badges";
+export { BadgeLink } from "./badge-link";
+export { BadgeRow } from "./badge-row";
 
 export { Analytics, AnalyticsNoScript, type SiteAnalytics } from "./analytics";
 

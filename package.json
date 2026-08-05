@@ -1,6 +1,6 @@
 {
   "name": "@tintorch/web",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Shared pieces for TinTorch CMS sites: footer badges, ownership verifications and analytics loaders.",
   "license": "UNLICENSED",
   "repository": {
@@ -11,7 +11,9 @@
   "sideEffects": false,
   "exports": {
     ".": "./src/index.ts",
-    "./badges": "./src/badges.tsx",
+    "./badges": "./src/badges.ts",
+    "./badge-link": "./src/badge-link.tsx",
+    "./badge-row": "./src/badge-row.tsx",
     "./analytics": "./src/analytics.tsx",
     "./verification": "./src/verification.ts"
   },
