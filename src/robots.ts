@@ -69,6 +69,16 @@ export const AI_CRAWLERS = [
  */
 export const AI_SCRAPERS = ["Bytespider", "CCBot", "AI2Bot"];
 
+/**
+ * One group in robots.txt.
+ *
+ * Next types `rules` as either a single group, whose `userAgent` is optional,
+ * or an array of groups, whose `userAgent` is not. Only the array form is built
+ * here, so this is that element - mixing the two makes every group's userAgent
+ * optional and the array unassignable.
+ */
+export type RobotsRule = Extract<NonNullable<MetadataRoute.Robots["rules"]>, unknown[]>[number];
+
 export type RobotsOptions = {
   siteUrl: string;
   /** Added to the defaults rather than replacing them. */
@@ -80,7 +90,7 @@ export type RobotsOptions = {
   /** False lets the training-only scrapers in. They are blocked by default. */
   blockScrapers?: boolean;
   /** Groups appended after the defaults, for anything a site needs to say. */
-  extraRules?: NonNullable<MetadataRoute.Robots["rules"]>;
+  extraRules?: RobotsRule[];
   /**
    * A staging or preview origin has no business in an index, and the surest way
    * to keep it out is to say so here rather than to rely on nobody linking it.
@@ -117,8 +127,7 @@ export function robotsRules({
    * group has to repeat what it needs. Leaving it out is how the optimizer was
    * once left open to Googlebot alone.
    */
-  return {
-    rules: [
+  const rules: RobotsRule[] = [
       { userAgent: "*", allow: DEFAULT_ALLOW, disallow: blocked },
       {
         userAgent: IMAGE_CRAWLERS,
@@ -130,7 +139,10 @@ export function robotsRules({
         : [{ userAgent: AI_CRAWLERS, disallow: "/" }]),
       ...(blockScrapers ? [{ userAgent: AI_SCRAPERS, disallow: "/" }] : []),
       ...extraRules,
-    ],
+  ];
+
+  return {
+    rules,
     ...(base
       ? { sitemap: [`${base}/sitemap.xml`, ...sitemaps.map((path) => `${base}${path}`)], host: base }
       : {}),
