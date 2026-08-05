@@ -33,6 +33,8 @@ export { verificationMetadata, type SiteVerification } from "./verification";
  */
 export {
   SITEMAP_MAX_URLS,
+  dedupeUrls,
+  newestLastModified,
   parseSectionPath,
   sectionPageCount,
   sectionPath,

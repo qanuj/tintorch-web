@@ -142,7 +142,14 @@ ${entries.join("\n")}
 `;
 }
 
-/** One section's file. */
+/**
+ * One section's file.
+ *
+ * Deduplicated by URL, last one winning. Sections built from overlapping
+ * sources emit the same page twice - a country hub that is also a CMS page, a
+ * doctor listed under two specialisms - and a repeated <loc> is a validation
+ * error that invalidates the whole file rather than the one entry.
+ */
 export function urlSetXml({
   siteUrl,
   urls,
@@ -152,7 +159,7 @@ export function urlSetXml({
   urls: SitemapUrl[];
   stylesheet?: string;
 }): string {
-  const entries = urls.map((url) => {
+  const entries = dedupeUrls(siteUrl, urls).map((url) => {
     const loc = xmlEscape(sitemapUrl(siteUrl, url.path));
     const when = lastmod(url.lastModified);
     return when
@@ -165,6 +172,30 @@ export function urlSetXml({
 ${entries.join("\n")}
 </urlset>
 `;
+}
+
+/** One entry per URL, the last of any repeat winning. */
+export function dedupeUrls(siteUrl: string, urls: SitemapUrl[]): SitemapUrl[] {
+  return [...new Map(urls.map((url) => [sitemapUrl(siteUrl, url.path), url])).values()];
+}
+
+/**
+ * The freshest date in a set of URLs.
+ *
+ * A <lastmod> on an index entry lets a crawler skip a child it has already seen
+ * unchanged, which is the only thing that keeps re-crawl cost flat as the number
+ * of children grows.
+ */
+export function newestLastModified(urls: SitemapUrl[]): string | null {
+  let newest = 0;
+
+  for (const url of urls) {
+    if (!url.lastModified) continue;
+    const time = new Date(url.lastModified).getTime();
+    if (!Number.isNaN(time) && time > newest) newest = time;
+  }
+
+  return newest > 0 ? new Date(newest).toISOString() : null;
 }
 
 /** The slice of URLs a numbered file holds. */
@@ -223,11 +254,20 @@ export function sitemapHandlers({
   return {
     async index(): Promise<Response> {
       const sections = await Promise.all(
-        sources.map(async (source) => ({
-          key: source.key,
-          total: source.total ? await source.total() : (await source.list()).length,
-          lastModified: source.lastModified,
-        })),
+        sources.map(async (source) => {
+          // A source with its own count is asked for one; anything else has to
+          // be listed anyway, so its freshest date comes free with the length.
+          if (source.total) {
+            return { key: source.key, total: await source.total(), lastModified: source.lastModified };
+          }
+
+          const urls = dedupeUrls(siteUrl, await source.list());
+          return {
+            key: source.key,
+            total: urls.length,
+            lastModified: source.lastModified ?? newestLastModified(urls),
+          };
+        }),
       );
 
       return sitemapResponse(
