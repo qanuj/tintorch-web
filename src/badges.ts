@@ -97,7 +97,18 @@ export function badgeAlt(badge: SiteBadge): string {
  */
 export function withRefurl(href: string, pageUrl: string): string {
   try {
-    const url = new URL(href);
+    /*
+     * Parsed against the current page, because DMCA hands out its link
+     * protocol-relative - `//www.dmca.com/Protection/Status.aspx?ID=...` - and
+     * that is how it gets pasted into the CMS. On its own it does not parse at
+     * all, so this used to fall through to the catch and return the link
+     * untouched: the badge rendered, and the one thing it was here to do
+     * silently did not happen.
+     *
+     * Only for reading the host. The href is appended to as written, so a
+     * protocol-relative link stays protocol-relative.
+     */
+    const url = new URL(href, pageUrl);
     if (!/(^|\.)dmca\.com$/i.test(url.hostname)) return href;
     // Already carries one - a link stored with the parameter baked in.
     if (url.searchParams.has("refurl")) return href;
