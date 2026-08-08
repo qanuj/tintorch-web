@@ -70,3 +70,10 @@ export {
   tagSlug,
   type FeedItem,
 } from "./feed";
+
+/*
+ * Crediting. The CMS has always allowed several authors per item; the sites
+ * each read a single legacy field, so a post credited to two people showed one
+ * or none.
+ */
+export { bylineText, postAuthors, schemaAuthors, type PostAuthor } from "./authors";

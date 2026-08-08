@@ -1,6 +1,6 @@
 {
   "name": "@tintorch/web",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Shared pieces for TinTorch CMS sites: badges, verifications, analytics, sitemaps, robots.txt, llms.txt and RSS.",
   "license": "UNLICENSED",
   "repository": {
@@ -20,7 +20,8 @@
     "./sitemap-stylesheet": "./src/sitemap-stylesheet.ts",
     "./robots": "./src/robots.ts",
     "./llms": "./src/llms.ts",
-    "./feed": "./src/feed.ts"
+    "./feed": "./src/feed.ts",
+    "./authors": "./src/authors.ts"
   },
   "files": [
     "src"
