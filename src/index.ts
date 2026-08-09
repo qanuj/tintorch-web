@@ -77,3 +77,18 @@ export {
  * or none.
  */
 export { bylineText, postAuthors, schemaAuthors, type PostAuthor } from "./authors";
+
+/*
+ * Path redirects written in the CMS. The same matcher runs in the CMS form, in
+ * its validation and here, so a rule cannot mean one thing where it is written
+ * and another where it is applied.
+ */
+export {
+  checkRule,
+  fetchRedirects,
+  matchRedirect,
+  normalizePath,
+  type RedirectRule,
+  type RedirectMatch,
+  type RuleProblem,
+} from "./redirects";
