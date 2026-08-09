@@ -85,7 +85,7 @@ export { bylineText, postAuthors, schemaAuthors, type PostAuthor } from "./autho
  */
 export {
   checkRule,
-  fetchRedirects,
+  createRedirectMatcher,
   matchRedirect,
   normalizePath,
   type RedirectRule,

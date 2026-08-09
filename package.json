@@ -1,6 +1,6 @@
 {
   "name": "@tintorch/web",
-  "version": "1.8.0",
+  "version": "1.8.1",
   "description": "Shared pieces for TinTorch CMS sites: badges, verifications, analytics, sitemaps, robots.txt, llms.txt and RSS.",
   "license": "UNLICENSED",
   "repository": {
@@ -40,4 +40,4 @@
   "scripts": {
     "typecheck": "tsc --noEmit"
   }
-}\n
+}

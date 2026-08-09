@@ -139,33 +139,65 @@ export function matchRedirect(path: string, rules: RedirectRule[]): RedirectMatc
 /** What the delivery API returns from /api/v1/content/redirects. */
 type RedirectsResponse = { data?: RedirectRule[] };
 
+async function load(cmsUrl: string, key: string): Promise<RedirectRule[]> {
+  const response = await fetch(`${cmsUrl.replace(/\/+$/, "")}/api/v1/content/redirects`, {
+    headers: { authorization: `Bearer ${key}` },
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error(`Redirects: ${response.status}`);
+  const body = (await response.json()) as RedirectsResponse;
+  return Array.isArray(body.data) ? body.data : [];
+}
+
 /**
- * A workspace's redirects, fetched from the CMS.
+ * A matcher for use in middleware.
  *
- * Cached for a few minutes rather than per request: this runs in front of every
- * request that reaches the site, and a fetch on each one turns the CMS into a
- * hard dependency of every page load. A redirect appearing a few minutes after
- * it is written is the right trade.
+ * The cache is in this module rather than in `fetch` because middleware has no
+ * data cache - `next: { revalidate }` is quietly ignored there, so the obvious
+ * spelling of this fetches the CMS on every request into the site. A module
+ * variable survives between invocations on the same instance, which is the
+ * cache middleware actually has.
  *
- * An unreachable CMS returns nothing rather than throwing. A failed fetch here
- * should cost the visitor a redirect, not the page.
+ * Stale rules are served while a refresh runs, and a failed refresh keeps
+ * serving the last good list. Redirects sit in front of every request: the
+ * failure this must not have is the CMS being briefly unreachable and the site
+ * losing its redirects along with it. The first ever load is the only one that
+ * blocks, and it fails to "no redirects" rather than to an error page.
  */
-export async function fetchRedirects(options: {
+export function createRedirectMatcher(options: {
   cmsUrl: string;
   key: string;
-  revalidate?: number;
-}): Promise<RedirectRule[]> {
-  const { cmsUrl, key, revalidate = 300 } = options;
+  /** How long a fetched list is served before a refresh is started. */
+  ttlMs?: number;
+}): (path: string) => Promise<RedirectMatch | null> {
+  const { cmsUrl, key, ttlMs = 60_000 } = options;
 
-  try {
-    const response = await fetch(`${cmsUrl.replace(/\/+$/, "")}/api/v1/content/redirects`, {
-      headers: { authorization: `Bearer ${key}` },
-      next: { revalidate, tags: ["redirects"] },
-    });
-    if (!response.ok) return [];
-    const body = (await response.json()) as RedirectsResponse;
-    return Array.isArray(body.data) ? body.data : [];
-  } catch {
-    return [];
+  let rules: RedirectRule[] = [];
+  let loadedAt = 0;
+  let inFlight: Promise<void> | null = null;
+
+  function refresh(): Promise<void> {
+    inFlight ??= load(cmsUrl, key)
+      .then((next) => {
+        rules = next;
+        loadedAt = Date.now();
+      })
+      .catch(() => {
+        // Keep whatever we had. Backing off stops a broken CMS from being
+        // hammered by every request that arrives while it is down.
+        loadedAt = Date.now();
+      })
+      .finally(() => {
+        inFlight = null;
+      });
+    return inFlight;
   }
+
+  return async (path: string) => {
+    const stale = Date.now() - loadedAt > ttlMs;
+    if (stale && loadedAt === 0) await refresh();
+    else if (stale) void refresh();
+
+    return rules.length ? matchRedirect(path, rules) : null;
+  };
 }
