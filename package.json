@@ -1,6 +1,6 @@
 {
   "name": "@tintorch/web",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "description": "Shared pieces for TinTorch CMS sites: badges, verifications, analytics, sitemaps, robots.txt, llms.txt and RSS.",
   "license": "UNLICENSED",
   "repository": {
@@ -21,10 +21,16 @@
     "./robots": "./src/robots.ts",
     "./llms": "./src/llms.ts",
     "./feed": "./src/feed.ts",
-    "./authors": "./src/authors.ts"
+    "./authors": "./src/authors.ts",
+    "./usage": {
+      "types": "./usage.d.mts",
+      "default": "./usage.mjs"
+    }
   },
   "files": [
-    "src"
+    "src",
+    "usage.mjs",
+    "usage.d.mts"
   ],
   "peerDependencies": {
     "next": ">=15",
