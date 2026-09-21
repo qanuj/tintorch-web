@@ -21,6 +21,15 @@ export {
   type CmsClientOptions,
 } from "./client";
 export {
+  homeCount,
+  homeEntry,
+  homeSectionFor,
+  homeSections,
+  homeSectionsFor,
+  type HomeSection,
+  type HomeSectionConfig,
+} from "./home";
+export {
   clientIpFrom,
   getForm,
   submitForm,

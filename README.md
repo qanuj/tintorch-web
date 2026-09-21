@@ -11,7 +11,7 @@ What does **not** live here is anything a site should be free to disagree about.
 ## Install
 
 ```bash
-npm install github:qanuj/tintorch-web#semver:^2.0.0
+npm install github:qanuj/tintorch-web#semver:^2.1.0
 ```
 
 The package ships `.tsx` rather than compiled output, so the consuming app compiles it:
@@ -62,6 +62,23 @@ Every read is tagged `cms` and `cms:<type>`, so a publish webhook can drop one t
 `field`, `fieldList`, `fieldBool`, `fieldNumber`, `fieldRecords` and the `item*` helpers coerce what the CMS actually stores: a number field arriving as `"240"`, a repeater arriving as JSON text from a textarea, a `description` that is a summary on one type and the whole body on another.
 
 `fieldNumber` returns `null` rather than `0` for anything unparseable, so a missing bed count never renders as a hospital with no beds.
+
+### Home page sections
+
+```ts
+import { cms, homeSections, homeCount } from "@tintorch/web/cms";
+
+const site = await cms.request("/site");
+for (const section of homeSections(site.data.config.home, site.data.types)) {
+  // section.type, .count, .title, .subtitle, .eyebrow, .moreLabel, .moreHref, .showImage
+}
+```
+
+Settings › Site › Home page keeps an entry per content type. `count` is the switch as well as the size (zero hides the section and keeps its wording), and `sequence` is the drag order, global across every type, so the numbers that come back have gaps in them. `homeSections` sorts rather than indexes, which makes the gaps harmless, and breaks ties on the type key so a page is stable before anyone has ordered it.
+
+`homeSectionsFor(home, renderable, types)` narrows the list to types this site actually has a route for. `homeCount(home, type, fallback)` is for a page that only wants a number, and honours a configured zero rather than falling back.
+
+Old workspaces stored a bare number under a plural key (`{ services: 6 }`). Both shapes read the same.
 
 ### Forms
 
@@ -119,7 +136,7 @@ It fails **open**: an unknown or empty list admits the request, which then 404s 
 npm test
 ```
 
-114 unit tests, no network. They are the contract: the error rules, the pagination ceiling, the fail-open guard, the escaper's treatment of code spans and autolinks, and the exact shape of a form submission are all asserted, because those are the things six hand-written copies each got differently.
+138 unit tests, no network. They are the contract: the error rules, the pagination ceiling, the fail-open guard, the escaper's treatment of code spans and autolinks, and the exact shape of a form submission are all asserted, because those are the things six hand-written copies each got differently.
 
 ## Badges
 
