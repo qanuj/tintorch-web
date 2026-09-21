@@ -7,9 +7,25 @@
  * others, an alt attribute improved in one and not the others.
  *
  * What does not live here is anything a site should be free to disagree about.
- * No styling, no CMS client, no layout: components take data in and take every
- * class name as a prop, because the one thing these sites never share is how
- * they look.
+ * No styling, no layout: components take data in and take every class name as
+ * a prop, because the one thing these sites never share is how they look.
+ *
+ * Since 2.0 the CMS client lives here too, which this comment used to say it
+ * never would. The rule has not changed, the reading of it has: how a site
+ * talks to the CMS - the tags, the pagination, what a 500 means - turned out
+ * not to be something a site should disagree about, and six copies that
+ * disagreed anyway cost six incidents. What a site calls its content is still
+ * the site's own business, and still lives in the site.
+ *
+ * Those pieces are subpath-only on purpose:
+ *
+ *   @tintorch/web/cms         the delivery client, forms, field readers
+ *   @tintorch/web/markdown    escaping, `:::faq` fences, the sanitiser allowlist
+ *   @tintorch/web/slug-guard  what a section publishes, for the edge
+ *
+ * They are server-only and read the environment on import, and this barrel is
+ * reached from client components, so importing them here would drag a CMS key
+ * into a bundle that has no business holding one.
  */
 
 /*
