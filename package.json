@@ -1,6 +1,6 @@
 {
   "name": "@tintorch/web",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "Shared pieces for TinTorch CMS sites: the CMS client, Markdown handling, slug guard, forms, badges, analytics, sitemaps, robots.txt, llms.txt and RSS.",
   "license": "UNLICENSED",
   "repository": {

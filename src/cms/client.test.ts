@@ -312,6 +312,51 @@ describe("retrying a transient failure", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  it("asks again when the body stops arriving mid-read", async () => {
+    /*
+     * The case that got past the first version of this. The headers said 200
+     * and then the body timed out, so the failure carried status 200, which is
+     * not a status anyone retries - and a real build failed on exactly that,
+     * on `/business?page=1&limit=100`, with the error reading "[cms] 200".
+     */
+    let calls = 0;
+    const fetchImpl = vi.fn(async () => {
+      calls += 1;
+      if (calls > 1) return json({ data: item("a") });
+      return {
+        status: 200,
+        ok: true,
+        json: async () => {
+          throw Object.assign(new Error("The operation was aborted due to timeout"), {
+            name: "TimeoutError",
+          });
+        },
+      } as unknown as Response;
+    });
+
+    await expect(client(fetchImpl as never, 3).getItem("blog", "a")).resolves.toMatchObject({
+      slug: "a",
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("marks a failure as transient or not, rather than inferring it later", async () => {
+    const network = vi.fn(async () => boom("ECONNREFUSED") as never);
+    await client(network as never, 1)
+      .getItem("blog", "a")
+      .catch((error: CmsError) => expect(error.transient).toBe(true));
+
+    const busy = vi.fn(async () => new Response("", { status: 503 }));
+    await client(busy as never, 1)
+      .getItem("blog", "a")
+      .catch((error: CmsError) => expect(error.transient).toBe(true));
+
+    const wrongKey = vi.fn(async () => new Response("", { status: 401 }));
+    await client(wrongKey as never, 1)
+      .getItem("blog", "a")
+      .catch((error: CmsError) => expect(error.transient).toBe(false));
+  });
+
   it("gives each attempt its own timeout", async () => {
     const fetchImpl = vi.fn(async (_url: string, init: RequestInit) => {
       expect(init.signal).toBeInstanceOf(AbortSignal);

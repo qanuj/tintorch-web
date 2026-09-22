@@ -44,11 +44,14 @@ export const MAX_ATTEMPTS = 3;
 const BACKOFF_MS = [250, 1000];
 
 /**
- * A connection that has not opened in this long is not going to. Without a
- * limit a stalled socket holds a build worker until the platform's own
- * timeout, which on one build was sixty seconds per page.
+ * How long one attempt gets, headers and body together.
+ *
+ * Without a limit a stalled socket holds a build worker until the platform's
+ * own timeout. Generous rather than tight, because the slowest thing here is a
+ * hundred items with their bodies, which is a real payload over a real link
+ * and not a sign that anything is wrong.
  */
-const DEFAULT_TIMEOUT_MS = 15_000;
+const DEFAULT_TIMEOUT_MS = 30_000;
 
 /** Statuses worth asking about again: the CMS is busy, not answering "no". */
 const TRANSIENT = new Set([408, 425, 429, 500, 502, 503, 504]);
@@ -58,12 +61,24 @@ const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 export class CmsError extends Error {
   readonly status: number | undefined;
   readonly path: string;
+  /**
+   * Whether asking again could plausibly answer differently.
+   *
+   * Carried on the error rather than worked out from the status, because the
+   * two do not line up: a body that stops arriving halfway through is reported
+   * against whatever status its headers carried, and a 200 that never finished
+   * is every bit as transient as a connection that never opened. Deciding from
+   * the status alone got that exact case wrong, and it is the one that fails
+   * builds.
+   */
+  readonly transient: boolean;
 
-  constructor(path: string, status?: number, cause?: unknown) {
+  constructor(path: string, status?: number, cause?: unknown, transient = false) {
     super(status ? `[cms] ${status} ${path}` : `[cms] request failed: ${path}`, { cause });
     this.name = "CmsError";
     this.status = status;
     this.path = path;
+    this.transient = transient;
   }
 }
 
@@ -125,7 +140,9 @@ export function createCmsClient(options: CmsClientOptions) {
         signal: AbortSignal.timeout(timeoutMs),
       } as RequestInit);
     } catch (cause) {
-      throw new CmsError(path, undefined, cause);
+      // Nothing came back at all: a refused connection, a DNS failure, or a
+      // timeout before the headers.
+      throw new CmsError(path, undefined, cause, true);
     }
 
     if (response.status === 404) return null;
@@ -135,21 +152,22 @@ export function createCmsClient(options: CmsClientOptions) {
      * exists - a swallowed 500 once shipped whole sections as 404s under a
      * green check.
      */
-    if (!response.ok) throw new CmsError(path, response.status);
+    if (!response.ok) {
+      throw new CmsError(path, response.status, undefined, TRANSIENT.has(response.status));
+    }
 
     try {
       return (await response.json()) as T;
     } catch (cause) {
-      throw new CmsError(path, response.status, cause);
+      /*
+       * The headers said 200 and then the body stopped. Transient whatever the
+       * status was: the answer was on its way and did not finish arriving.
+       * Malformed JSON lands here too and is retried once or twice for
+       * nothing, which is a cheaper mistake than failing a build on a
+       * half-delivered list.
+       */
+      throw new CmsError(path, response.status, cause, true);
     }
-  }
-
-  /** Whether asking again could plausibly give a different answer. */
-  function worthRetrying(error: unknown): boolean {
-    if (!(error instanceof CmsError)) return false;
-    // No status is a connection that never opened, or a body that never
-    // arrived. That is the one that fails builds, and it is always transient.
-    return error.status === undefined || TRANSIENT.has(error.status);
   }
 
   async function request<T>(path: string, revalidate = defaultRevalidate): Promise<T | null> {
@@ -161,7 +179,8 @@ export function createCmsClient(options: CmsClientOptions) {
         return await attempt<T>(path, revalidate);
       } catch (error) {
         last = error;
-        if (at === attempts - 1 || !worthRetrying(error)) break;
+        const transient = error instanceof CmsError && error.transient;
+        if (at === attempts - 1 || !transient) break;
         await sleep(BACKOFF_MS[at] ?? BACKOFF_MS[BACKOFF_MS.length - 1]!);
       }
     }
