@@ -11,7 +11,7 @@ What does **not** live here is anything a site should be free to disagree about.
 ## Install
 
 ```bash
-npm install github:qanuj/tintorch-web#semver:^2.1.0
+npm install github:qanuj/tintorch-web#semver:^2.2.0
 ```
 
 The package ships `.tsx` rather than compiled output, so the consuming app compiles it:
@@ -54,6 +54,9 @@ Four rules it enforces, each one a bug some copy of this file had:
 | `listAllItems` throws at 60 pages | Truncating silently is worse than failing: a partial list 404s real pages and prunes real URLs from the sitemap |
 | `http://` is upgraded to `https://` | The redirect drops the `Authorization` header, which reads as "no content" rather than as an error |
 | An unset key is a soft failure | A site has to build before the CMS is wired up |
+| A transient failure is retried, up to 3 attempts | A build asks a few thousand questions in a row; one connection that never opens should not fail the whole thing |
+
+Retries cover a connection that never opened, a body that never arrived, and the statuses that mean the CMS is busy (408, 425, 429, 5xx). A 404, a 401 and a 422 are answers, so they are not asked twice. Each attempt gets its own 15-second timeout, because a stalled socket otherwise holds a build worker until the platform gives up on it. `attempts: 1` turns it off; `sleep` is injectable so tests do not pay for the backoff.
 
 Every read is tagged `cms` and `cms:<type>`, so a publish webhook can drop one type or everything.
 
@@ -136,7 +139,7 @@ It fails **open**: an unknown or empty list admits the request, which then 404s 
 npm test
 ```
 
-138 unit tests, no network. They are the contract: the error rules, the pagination ceiling, the fail-open guard, the escaper's treatment of code spans and autolinks, and the exact shape of a form submission are all asserted, because those are the things six hand-written copies each got differently.
+146 unit tests, no network. They are the contract: the error rules, the pagination ceiling, the fail-open guard, the escaper's treatment of code spans and autolinks, and the exact shape of a form submission are all asserted, because those are the things six hand-written copies each got differently.
 
 ## Badges
 

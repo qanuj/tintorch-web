@@ -23,8 +23,17 @@ type FetchCall = [string, RequestInit & { next?: unknown }];
 
 const callsOf = (fn: { mock: { calls: unknown[] } }) => fn.mock.calls as FetchCall[];
 
-function client(fetchImpl: typeof globalThis.fetch) {
-  return createCmsClient({ baseUrl: "https://cms.test", key: "ttck_x", fetch: fetchImpl });
+/** Backoff is real time; tests do not pay for it. */
+const instantly = async () => {};
+
+function client(fetchImpl: typeof globalThis.fetch, attempts = 1) {
+  return createCmsClient({
+    baseUrl: "https://cms.test",
+    key: "ttck_x",
+    fetch: fetchImpl,
+    attempts,
+    sleep: instantly,
+  });
 }
 
 describe("normaliseBaseUrl", () => {
@@ -211,5 +220,104 @@ describe("listSlugs", () => {
 
     await expect(client(fetchImpl as never).listSlugs("blog")).resolves.toEqual(["a", "b"]);
     expect(new URL(callsOf(fetchImpl)[0]![0]).searchParams.get("fields")).toBe("slug");
+  });
+});
+
+
+describe("retrying a transient failure", () => {
+  /*
+   * The failure this exists for: a build asks the CMS a few thousand questions
+   * in a row from one machine, and one connection that never opens used to
+   * fail the whole build - with the request before and the request after both
+   * succeeding, which is what says it is worth asking again.
+   */
+  const boom = (cause: string) => {
+    const error = new Error(cause);
+    return Promise.reject(error);
+  };
+
+  it("asks again when the connection never opened", async () => {
+    let calls = 0;
+    const fetchImpl = vi.fn(async () => {
+      calls += 1;
+      if (calls === 1) return boom("UND_ERR_CONNECT_TIMEOUT") as never;
+      return json({ data: item("a") });
+    });
+
+    await expect(client(fetchImpl as never, 3).getItem("blog", "a")).resolves.toMatchObject({
+      slug: "a",
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("gives up after the last attempt and reports the failure", async () => {
+    const fetchImpl = vi.fn(async () => boom("ECONNRESET") as never);
+
+    await expect(client(fetchImpl as never, 3).getItem("blog", "a")).rejects.toBeInstanceOf(
+      CmsError,
+    );
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+  });
+
+  it("asks again on the statuses that mean the CMS is busy", async () => {
+    for (const status of [429, 500, 502, 503, 504]) {
+      const fetchImpl = vi.fn(async () => new Response("", { status }));
+      await expect(client(fetchImpl as never, 2).getItem("blog", "a")).rejects.toMatchObject({
+        status,
+      });
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+    }
+  });
+
+  it("does not ask again for an answer that will not change", async () => {
+    // A 404 is an answer, a 401 is a wrong key, a 422 is a bad request. Asking
+    // any of them twice gets the same reply more slowly.
+    for (const status of [400, 401, 403, 422]) {
+      const fetchImpl = vi.fn(async () => new Response("", { status }));
+      await expect(client(fetchImpl as never, 3).getItem("blog", "a")).rejects.toMatchObject({
+        status,
+      });
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("does not ask again for a 404, which is not a failure at all", async () => {
+    const fetchImpl = vi.fn(async () => new Response("", { status: 404 }));
+    await expect(client(fetchImpl as never, 3).getItem("blog", "a")).resolves.toBeNull();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("backs off between attempts, longer each time", async () => {
+    const waits: number[] = [];
+    const fetchImpl = vi.fn(async () => boom("timeout") as never);
+    const cms = createCmsClient({
+      baseUrl: "https://cms.test",
+      key: "ttck_x",
+      fetch: fetchImpl as never,
+      attempts: 3,
+      sleep: async (ms: number) => {
+        waits.push(ms);
+      },
+    });
+
+    await expect(cms.getItem("blog", "a")).rejects.toBeInstanceOf(CmsError);
+    expect(waits).toEqual([250, 1000]);
+  });
+
+  it("can be turned off", async () => {
+    const fetchImpl = vi.fn(async () => boom("timeout") as never);
+    await expect(client(fetchImpl as never, 1).getItem("blog", "a")).rejects.toBeInstanceOf(
+      CmsError,
+    );
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives each attempt its own timeout", async () => {
+    const fetchImpl = vi.fn(async (_url: string, init: RequestInit) => {
+      expect(init.signal).toBeInstanceOf(AbortSignal);
+      return json({ data: item("a") });
+    });
+    await client(fetchImpl as never).getItem("blog", "a");
+    expect(fetchImpl).toHaveBeenCalledOnce();
   });
 });

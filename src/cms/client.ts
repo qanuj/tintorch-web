@@ -24,6 +24,37 @@ export const CMS_TAG = "cms";
  */
 export const MAX_PAGES = 60;
 
+/**
+ * How many times a read is attempted before it gives up.
+ *
+ * A build asks the CMS a few thousand questions in a row from one machine, and
+ * one of them failing to connect used to fail the whole build: a site with two
+ * thousand pages needs two thousand consecutive successes over the public
+ * internet, which is not a thing that happens. The failures are not the CMS
+ * being down - the request before and the request after both succeed - so they
+ * are worth asking again rather than reporting.
+ *
+ * Only transient failures are retried. A 404 is an answer, a 401 is a wrong
+ * key, and a 422 is a bad request; asking any of those twice gets the same
+ * reply more slowly.
+ */
+export const MAX_ATTEMPTS = 3;
+
+/** Backoff between attempts, in milliseconds. Short: a build is waiting. */
+const BACKOFF_MS = [250, 1000];
+
+/**
+ * A connection that has not opened in this long is not going to. Without a
+ * limit a stalled socket holds a build worker until the platform's own
+ * timeout, which on one build was sixty seconds per page.
+ */
+const DEFAULT_TIMEOUT_MS = 15_000;
+
+/** Statuses worth asking about again: the CMS is busy, not answering "no". */
+const TRANSIENT = new Set([408, 425, 429, 500, 502, 503, 504]);
+
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export class CmsError extends Error {
   readonly status: number | undefined;
   readonly path: string;
@@ -45,6 +76,12 @@ export type CmsClientOptions = {
   revalidate?: number;
   /** Injected for tests; defaults to the global. */
   fetch?: typeof globalThis.fetch;
+  /** How long to wait for one attempt. Default 15s. */
+  timeoutMs?: number;
+  /** How many attempts a transient failure gets. Default 3; 1 disables retry. */
+  attempts?: number;
+  /** Injected in tests so backoff does not cost real seconds. */
+  sleep?: (ms: number) => Promise<unknown>;
 };
 
 /**
@@ -69,6 +106,9 @@ export function createCmsClient(options: CmsClientOptions) {
   const key = options.key ?? "";
   const defaultRevalidate = options.revalidate ?? 300;
   const doFetch = options.fetch ?? globalThis.fetch;
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const attempts = Math.max(1, options.attempts ?? MAX_ATTEMPTS);
+  const sleep = options.sleep ?? wait;
 
   /**
    * A site has to build before the CMS is wired up, so a missing key is a soft
@@ -76,14 +116,13 @@ export function createCmsClient(options: CmsClientOptions) {
    */
   const configured = Boolean(baseUrl && key);
 
-  async function request<T>(path: string, revalidate = defaultRevalidate): Promise<T | null> {
-    if (!configured) return null;
-
+  async function attempt<T>(path: string, revalidate: number): Promise<T | null> {
     let response: Response;
     try {
       response = await doFetch(`${baseUrl}/api/v1/content${path}`, {
         headers: { Authorization: `Bearer ${key}` },
         next: { revalidate, tags: tagsFor(path) },
+        signal: AbortSignal.timeout(timeoutMs),
       } as RequestInit);
     } catch (cause) {
       throw new CmsError(path, undefined, cause);
@@ -103,6 +142,30 @@ export function createCmsClient(options: CmsClientOptions) {
     } catch (cause) {
       throw new CmsError(path, response.status, cause);
     }
+  }
+
+  /** Whether asking again could plausibly give a different answer. */
+  function worthRetrying(error: unknown): boolean {
+    if (!(error instanceof CmsError)) return false;
+    // No status is a connection that never opened, or a body that never
+    // arrived. That is the one that fails builds, and it is always transient.
+    return error.status === undefined || TRANSIENT.has(error.status);
+  }
+
+  async function request<T>(path: string, revalidate = defaultRevalidate): Promise<T | null> {
+    if (!configured) return null;
+
+    let last: unknown;
+    for (let at = 0; at < attempts; at++) {
+      try {
+        return await attempt<T>(path, revalidate);
+      } catch (error) {
+        last = error;
+        if (at === attempts - 1 || !worthRetrying(error)) break;
+        await sleep(BACKOFF_MS[at] ?? BACKOFF_MS[BACKOFF_MS.length - 1]!);
+      }
+    }
+    throw last;
   }
 
   async function listItems(type: string, options: ListOptions = {}): Promise<ListResult> {
