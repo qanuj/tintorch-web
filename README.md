@@ -11,7 +11,7 @@ What does **not** live here is anything a site should be free to disagree about.
 ## Install
 
 ```bash
-npm install github:qanuj/tintorch-web#semver:^2.2.1
+npm install github:qanuj/tintorch-web#semver:^2.3.0
 ```
 
 The package ships `.tsx` rather than compiled output, so the consuming app compiles it:
@@ -133,13 +133,33 @@ A render writes a cache entry whether it produced a page or a 404, and invented 
 
 It fails **open**: an unknown or empty list admits the request, which then 404s properly on its own. Refusing on a missing list turns one failed fetch into a site that answers 404 to everything. Retired slugs are admitted too, so the page can still issue its 301. `guard.forget()` after a publish makes new content reachable without waiting out the five-minute TTL.
 
+## Checkout
+
+```ts
+import { openCheckout, confirmCheckout } from "@tintorch/web/checkout";
+
+// The server created the order through the CMS and handed back what the
+// browser may know: which gateway, its public key, a single-use token.
+const outcome = await openCheckout({ order, name: "Punya Charitable Trust" });
+
+if (outcome.result === "submitted") {
+  const status = await confirmCheckout({ statusUrl: `/api/checkout/${order.id}` });
+}
+```
+
+Three gateways, three ways of being opened, one call. Razorpay opens a modal, Cashfree opens its own, and Stripe is a redirect to a page Stripe hosts - so the site's payment code is the same whichever the payer picked, and card details never touch a TinTorch site.
+
+Dependency-free: each gateway publishes a script that attaches itself to `window`, and three npm packages across four sites to call three constructors would cost more than it saves. The loader adds each script once and lets a second caller wait on the first, so a retry after a dismissed modal does not fetch the SDK again.
+
+**Nothing here decides whether the money arrived.** `openCheckout` resolves when the payer has finished with the gateway, which is not the same thing. `confirmCheckout` polls the site's own route, which asks the CMS, which asks the gateway - the payer's browser is the one participant with a reason to lie and the only one that can be closed mid-payment. It gives up as `PENDING` rather than `FAILED`: a slow bank is not a refusal, and telling somebody their donation failed while it is still settling is the worse mistake.
+
 ## Tests
 
 ```bash
 npm test
 ```
 
-148 unit tests, no network. They are the contract: the error rules, the pagination ceiling, the fail-open guard, the escaper's treatment of code spans and autolinks, and the exact shape of a form submission are all asserted, because those are the things six hand-written copies each got differently.
+159 unit tests, no network. They are the contract: the error rules, the pagination ceiling, the fail-open guard, the escaper's treatment of code spans and autolinks, and the exact shape of a form submission are all asserted, because those are the things six hand-written copies each got differently.
 
 ## Badges
 

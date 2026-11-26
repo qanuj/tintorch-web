@@ -1,6 +1,6 @@
 {
   "name": "@tintorch/web",
-  "version": "2.2.1",
+  "version": "2.3.0",
   "description": "Shared pieces for TinTorch CMS sites: the CMS client, Markdown handling, slug guard, forms, badges, analytics, sitemaps, robots.txt, llms.txt and RSS.",
   "license": "UNLICENSED",
   "repository": {
@@ -28,7 +28,8 @@
     },
     "./cms": "./src/cms/index.ts",
     "./markdown": "./src/markdown/index.ts",
-    "./slug-guard": "./src/slug-guard.ts"
+    "./slug-guard": "./src/slug-guard.ts",
+    "./checkout": "./src/checkout.ts"
   },
   "files": [
     "src",
