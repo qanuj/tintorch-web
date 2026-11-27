@@ -254,7 +254,26 @@ export type ConfirmOptions = {
   timeoutMs?: number;
   intervalMs?: number;
   signal?: AbortSignal;
+  /**
+   * Called when the status route answers something that is not a status.
+   *
+   * A donate page has nothing useful to show a payer here, but somebody has
+   * to hear about a key that stopped working or an id that does not exist.
+   * Without this the only symptom is every payment sitting pending.
+   */
+  onProblem?: (problem: { status: number; message: string }) => void;
 };
+
+/**
+ * Whether asking again could plausibly give a different answer.
+ *
+ * A dropped connection, a rate limit, a gateway still thinking: all worth
+ * another go. A 404 or a rejected key will say the same thing ninety seconds
+ * later, so spending ninety seconds finding that out helps nobody.
+ */
+function worthRetrying(status: number): boolean {
+  return status >= 500 || status === 408 || status === 425 || status === 429;
+}
 
 /**
  * Wait for the server to agree that the money arrived.
@@ -282,11 +301,27 @@ export async function confirmCheckout(
         cache: "no-store",
         signal: options.signal,
       });
+
       if (response.ok) {
         const body = (await response.json()) as { data?: { status?: string } };
         const status = body.data?.status;
         if (status === "PAID") return "PAID";
         if (status === "FAILED") return "FAILED";
+      } else {
+        /*
+         * The delivery API answers `{ error: { status, message } }`, and the
+         * message is the gateway's own words where there were any. Pass it on
+         * rather than reducing the whole thing to a number.
+         */
+        const body = (await response.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
+        options.onProblem?.({
+          status: response.status,
+          message: body?.error?.message ?? `The status could not be read (${response.status}).`,
+        });
+        // Nothing will change by asking a fourth time.
+        if (!worthRetrying(response.status)) return "PENDING";
       }
     } catch {
       // A dropped request mid-poll is not an answer; keep asking.

@@ -137,6 +137,44 @@ describe("confirmCheckout", () => {
     ).resolves.toBe("PENDING");
   });
 
+  it("stops asking once the answer cannot change, and says why", async () => {
+    /*
+     * A 404 means the id is wrong, not that a bank is slow. Polling it for
+     * ninety seconds turns a typo into a payment that looks pending.
+     */
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ error: { status: 404, message: "No such order." } }), {
+          status: 404,
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const problems: { status: number; message: string }[] = [];
+
+    await expect(
+      confirmCheckout({ statusUrl, intervalMs: 1, onProblem: (p) => problems.push(p) }),
+    ).resolves.toBe("PENDING");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(problems).toEqual([{ status: 404, message: "No such order." }]);
+  });
+
+  it("keeps asking through a rate limit", async () => {
+    let calls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        calls += 1;
+        return calls === 1
+          ? new Response("", { status: 429 })
+          : new Response(JSON.stringify({ data: { status: "PAID" } }), { status: 200 });
+      }),
+    );
+
+    await expect(confirmCheckout({ statusUrl, intervalMs: 1 })).resolves.toBe("PAID");
+    expect(calls).toBe(2);
+  });
+
   it("treats a non-OK response as no answer yet", async () => {
     let calls = 0;
     vi.stubGlobal(
